@@ -1,0 +1,3277 @@
+---
+title: "LibRes policy survey"
+subtitle: "Version 2"
+date: last-modified
+author: "Saar Alon-Barkat"
+format:
+  html: 
+    self-contained: true
+    page-layout: full
+    code-fold: true
+    toc: true
+    toc-location: left
+execute:
+  message: false
+  warning: false
+---
+
+Last update: `r Sys.time()`
+
+```{r}
+library(tidyverse)
+library(gt)
+library(gtsummary)
+library(sjPlot)
+library(ggcorrplot)
+library(labelled)
+library(haven)
+library(readxl)
+library(haven)
+library(dplyr)
+library(readxl)
+
+Sys.setlocale("LC_ALL","Herbrew")
+```
+
+# **The data**
+
+```{r}
+library(haven)
+LibRes_7waves_raw <- read_dta("data/LibRes_PolicySurvey_GovSatisfaction_Pooled.dta")
+tt <- read_dta("data/tt.dta")
+
+
+LibRes_7waves <- LibRes_7waves_raw %>%
+  mutate(
+    survey = Wave %>% recode(
+      
+    `1` = "1. Sep 20",
+    `2` = "2. Jan 21",
+    `3` = "3. Sep 21",
+    `4` = "4. Apr 22",
+    `5` = "5. Sep 22",
+    `6` = "6. Mar 23",
+    `7` = "7. Sep 23"))%>% 
+mutate(satisfied_education = POL_SAT_Education %>% na_if(5),
+         satisfied_transportation = POL_SAT_Transportation %>% na_if(5),
+         satisfied_laworder = POL_SAT_LawOrder %>% na_if(5),
+         satisfied_health = POL_SAT_Health %>% na_if(5),
+         satisfied_government = GOV_HAND %>% na_if(5),
+         satisfied_economy = POL_SAT_Economy %>% na_if(5),
+              satisfied_security = POL_SAT_Security %>% na_if(5),
+              satisfied_international = POL_SAT_International %>% na_if(5)) %>% 
+  mutate(satisfied_education = (satisfied_education-1)/3,
+         satisfied_transportation = (satisfied_transportation-1)/3,
+         satisfied_laworder = (satisfied_laworder-1)/3,
+         satisfied_health = (satisfied_health-1)/3,
+         satisfied_government = (satisfied_government-1)/3,
+         satisfied_economy = (satisfied_economy-1)/3,
+         satisfied_security = (satisfied_security-1)/3,
+         satisfied_international = (satisfied_international-1)/3
+         ) %>% 
+  mutate(satisfied_education_bi = POL_SAT_Education %>% 
+           recode(`1` = 0,
+                  `2` = 0,
+                  `3` = 1,
+                  `4` = 1) %>% na_if(5) %>% remove_labels(),
+         satisfied_transportation_bi = POL_SAT_Transportation %>%
+         recode(`1` = 0,
+                `2` = 0,
+                `3` = 1,
+                `4` = 1) %>% na_if(5) %>% remove_labels(),
+  satisfied_laworder_bi = POL_SAT_LawOrder %>%
+         recode(`1` = 0,
+                `2` = 0,
+                `3` = 1,
+                `4` = 1) %>% na_if(5)%>% remove_labels(),
+  satisfied_health_bi = POL_SAT_Health %>%
+         recode(`1` = 0,
+                `2` = 0,
+                `3` = 1,
+                `4` = 1) %>% na_if(5) %>% remove_labels(),
+  satisfied_government_bi = GOV_HAND %>%
+         recode(`1` = 0,
+                `2` = 0,
+                `3` = 1,
+                `4` = 1) %>% na_if(5)%>% remove_labels())%>% 
+mutate(
+  government_coalition = survey %>% 
+  recode( "1. Sep 20" = "Gantz_Netanyahu",
+       "2. Jan 21" = "Gantz_Netanyahu",
+       "3. Sep 21" = "Lapid_Bennett",
+       "4. Apr 22" = "Lapid_Bennett",
+       "5. Sep 22" = "Lapid_Bennett",
+       "6. Mar 23" = "Netanyahu"
+    ),
+  pre_post_2021 = case_when(
+      survey == "1. Sep 20" ~ 0,
+      survey == "2. Jan 21" ~ 0,
+      survey == "3. Sep 21" ~ 1,
+      survey == "4. Apr 22" ~ 1,
+      survey == "5. Sep 22" ~ NA_real_,
+      survey == "6. Mar 23" ~ NA_real_,
+      survey == "7. Sep 23" ~ NA_real_
+    ),
+  pre_post_2022 = case_when(
+      survey == "1. Sep 20" ~ NA_real_,
+      survey == "2. Jan 21" ~ NA_real_,
+      survey == "3. Sep 21" ~ NA_real_,
+      survey == "4. Apr 22" ~ 0,
+      survey == "5. Sep 22" ~ 0,
+      survey == "6. Mar 23" ~ 1,
+      survey == "7. Sep 23" ~ 1
+    )) %>% 
+mutate(wave_id = str_c(Wave,"_",id)) %>% 
+
+  mutate(jewish = ifelse(RELIGION==1,"Jewish","Non-Jewish")) %>% 
+  mutate(partisanship = OnlyBibi %>%   recode(
+    `-1` = "Anti Bibi",
+    `1` = "Only Bibi"
+  ) %>% remove_labels()) %>% 
+  mutate(only_bibi_lab = partisanship %>% 
+           to_factor() %>% 
+           recode(`Anti Bibi` = "Anti Netanyahu",
+                  `Only Bibi` = "Pro Netanyahu"), 
+    anti_bibi_bi = partisanship %>% 
+           recode(`Anti Bibi` = 1,
+                  `Only Bibi` = 0)) %>% 
+  mutate(partisanship_3_cat = case_when(
+    partisanship=="Anti Bibi" ~ "Anti Netanyahu",
+    partisanship=="Only Bibi" ~ "Only Netanyahu",
+    Vote_Past %in% c(NA) ~ NA,
+    TRUE ~ "Other"
+  )) %>%
+  mutate(partisanship_3_cat = factor(partisanship_3_cat, 
+                                     levels = c("Only Netanyahu", "Anti Netanyahu", "Other", NA))) 
+
+
+
+
+
+LibRes_7waves_jewish <- LibRes_7waves %>% filter(RELIGION==1) %>% 
+  mutate(partisanship = OnlyBibi %>%   recode(
+    `-1` = "Anti Bibi",
+    `1` = "Only Bibi"
+  ) %>% remove_labels()) %>% 
+  mutate(only_bibi_lab = partisanship %>% 
+           to_factor() %>% 
+           recode(`Anti Bibi` = "Anti Netanyahu",
+                  `Only Bibi` = "Pro Netanyahu"), 
+    anti_bibi_bi = partisanship %>% 
+           recode(`Anti Bibi` = 1,
+                  `Only Bibi` = 0)) 
+
+
+LibRes_7waves_arab <- LibRes_7waves %>% filter(RELIGION!=1) 
+LibRes_7waves_arab <- LibRes_7waves_arab %>% labelled::to_factor() %>%   
+  mutate(partisanship = ifelse(Vote_Past=="Arab List", "Arab list", OnlyBibi)) %>% 
+  mutate(partisanship = partisanship %>%  recode(
+    `1` = "Anti Bibi",
+    `2` = "Ambivalent",
+    `3` = "Only Bibi"
+  )) 
+    
+
+```
+
+
+
+# Descriptive statistics
+
+```{r}
+LibRes_7waves %>% 
+  glimpse()          
+
+```
+
+
+
+
+```{r}
+LibRes_7waves %>% 
+  count(survey,
+        pre_post_2021,
+        pre_post_2022,
+        government_coalition)
+```
+
+
+## Summary table
+
+```{r}
+
+
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(Age,GENDER,INCOME,educ_level,RELIGION,REGION,RELIGIOSITY_ALL) %>%  
+  tbl_summary(
+    #type = list(satisfied_education:satisfied_government ~ 'continuous'),
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"))
+
+```
+
+## Summary table (by year)
+
+```{r}
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(survey,Age,GENDER,INCOME,educ_level,RELIGION,REGION,RELIGIOSITY_ALL) %>% 
+  tbl_summary(by = survey, 
+    #type = list(satisfied_education:satisfied_government ~ 'continuous'),
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"))
+
+```
+
+
+## Balancing Per/Post
+
+2021
+```{r}
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(pre_post_2021,Age,GENDER,INCOME,educ_level,RELIGION,REGION,RELIGIOSITY_ALL) %>% 
+  tbl_summary(by = pre_post_2021, 
+    #type = list(satisfied_education:satisfied_government ~ 'continuous'),
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)")) %>% 
+  add_p()
+
+```
+
+2022
+```{r}
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(pre_post_2022,Age,GENDER,INCOME,educ_level,RELIGION,REGION,RELIGIOSITY_ALL) %>% 
+  tbl_summary(by = pre_post_2022, 
+    #type = list(satisfied_education:satisfied_government ~ 'continuous'),
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)")) %>% 
+  add_p()
+
+```
+
+### By Partisanship
+
+```{r}
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(OnlyBibi,Age,GENDER,INCOME,educ_level,RELIGION,REGION,RELIGIOSITY_ALL) %>% 
+  tbl_summary(by = OnlyBibi, 
+    #type = list(satisfied_education:satisfied_government ~ 'continuous'),
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)")) 
+
+```
+
+2021 
+
+Pro-Netanyahu 
+```{r}
+LibRes_7waves %>% 
+  filter(anti_bibi_bi==0) %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(pre_post_2021,Age,GENDER,INCOME,educ_level,REGION,RELIGION,RELIGIOSITY_ALL) %>% 
+  tbl_summary(by = pre_post_2021, 
+    #type = list(satisfied_education:satisfied_government ~ 'continuous'),
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)")) %>% 
+  add_p()
+
+```
+
+
+Anti-Netanyahu 
+```{r}
+LibRes_7waves %>% 
+  filter(anti_bibi_bi==1) %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(pre_post_2021,Age,GENDER,INCOME,educ_level,REGION,RELIGION,RELIGIOSITY_ALL) %>% 
+  tbl_summary(by = pre_post_2021, 
+    #type = list(satisfied_education:satisfied_government ~ 'continuous'),
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)")) %>% 
+  add_p()
+
+```
+
+
+
+2022 
+
+Pro-Netanyahu 
+```{r}
+LibRes_7waves %>% 
+  filter(anti_bibi_bi==0) %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(pre_post_2022,Age,GENDER,INCOME,educ_level,REGION,RELIGION,RELIGIOSITY_ALL) %>% 
+  tbl_summary(by = pre_post_2022, 
+    #type = list(satisfied_education:satisfied_government ~ 'continuous'),
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)")) %>% 
+  add_p()
+
+```
+
+
+Anti-Netanyahu 
+```{r}
+LibRes_7waves %>% 
+  filter(anti_bibi_bi==1) %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(pre_post_2022,Age,GENDER,INCOME,educ_level,REGION,RELIGION,RELIGIOSITY_ALL) %>% 
+  tbl_summary(by = pre_post_2022, 
+    #type = list(satisfied_education:satisfied_government ~ 'continuous'),
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)")) %>% 
+  add_p()
+
+```
+
+
+```{r}
+LibRes_7waves_jewish %>% 
+  labelled::to_factor() %>% 
+  select(survey,OnlyBibi) %>% 
+  tbl_summary(by = OnlyBibi, 
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n}"))
+
+
+
+LibRes_7waves_jewish %>% 
+  labelled::to_factor() %>% 
+  group_by(survey,OnlyBibi) %>% 
+  summarise(n = n()) %>% 
+  mutate(percent = ((n /sum (n)) %>% round(3))*100) %>% 
+  mutate(percent_lab = str_c(n," (",percent,"%)")) %>% 
+  filter(OnlyBibi %in% c("Anti Bibi","Only Bibi")) %>%
+  dplyr::select(survey,OnlyBibi,percent_lab) %>% 
+pivot_wider(names_from = OnlyBibi,values_from = percent_lab) %>% 
+  data_frame() %>% 
+  gt()
+
+LibRes_7waves_jewish %>% 
+  labelled::to_factor() %>% 
+  group_by(OnlyBibi) %>% 
+  summarise(n = n()) %>% 
+  mutate(percent = ((n /sum (n)) %>% round(3))*100) %>% 
+  mutate(percent_lab = str_c(n," (",percent,"%)")) %>% 
+  filter(OnlyBibi %in% c("Anti Bibi","Only Bibi")) %>%
+  dplyr::select(OnlyBibi,percent_lab) %>% 
+pivot_wider(names_from = OnlyBibi,values_from = percent_lab) %>% 
+  data_frame() %>% 
+  gt()
+
+
+```
+
+
+
+## Plots
+```{r}
+wave_lab = c("9/20","1/21","9/21","4/22","9/22","3/23","9/23")
+```
+
+
+```{r}
+t1<-LibRes_7waves %>% 
+  dplyr::select(POL_SAT_Education,
+                POL_SAT_Transportation,
+                POL_SAT_LawOrder,
+                POL_SAT_Health) %>% 
+  pivot_longer(cols = POL_SAT_Education:POL_SAT_Health) %>% 
+  mutate(service_lab = name %>% 
+           recode("POL_SAT_Education" = "Education",
+                  "POL_SAT_Transportation" ="Transportation",
+                  "POL_SAT_LawOrder"= "Law & Order",
+                  "POL_SAT_Health"=  "Health")) %>% 
+  group_by(service_lab,value) %>%
+  drop_na(value) %>% 
+  summarize(n=n())%>%
+mutate(freq=(n/sum(n))%>%round(3))%>%
+  mutate(freq.lab=str_c(100*freq,"%"))
+
+data_long <- LibRes_7waves %>%
+  dplyr::select(satisfied_education,
+                satisfied_transportation,
+                satisfied_laworder,
+                satisfied_health) %>% 
+  pivot_longer(
+    cols = c(satisfied_health, satisfied_education, satisfied_laworder, satisfied_transportation),
+    names_to = "variable",
+    values_to = "value"
+  )
+
+data_summary <- data_long %>%
+  group_by(variable) %>%
+  summarise(
+    mean = mean(value, na.rm = TRUE) %>% round(3),
+    sd = sd(value, na.rm = TRUE) %>% round(3)
+  )
+
+annotations <- data_summary %>% 
+  mutate(service_lab = c("Education", "Health", "Law & Order", "Transportation"),
+         label = str_c("Mean=",mean,", SD=",sd),
+  x = c(4.5, 4.5, 4.5, 4.5), # X positions of annotations
+  y = c(2000, 2000, 2000, 2000) # Y positions of annotations
+)
+
+t1%>%
+  #drop_na(trust_in_gov_lab)%>%
+  ggplot(aes(x=value,y=n))+geom_col(width=0.75,alpha=0.8,fill="dodgerblue2")+
+  geom_text(aes(label=freq.lab),colour="white",vjust=1,size=3)+
+  theme_classic()+
+  scale_x_continuous(breaks = c(1,2,3,4,5), labels = c("1\nVery unsatisfied",2,3,"4\nVery satisfied","NA"))+
+  facet_wrap(vars(service_lab))+
+  labs(title="",x="",y="")+
+  geom_text(data = annotations, aes(x=x, y=y, label=label), size=2.5) # Annotation layer
+
+```
+
+
+```{r}
+t1<-LibRes_7waves %>% 
+  dplyr::select(Wave,
+                satisfied_education,
+                satisfied_transportation,
+                satisfied_laworder,
+                satisfied_health) %>% 
+  pivot_longer(cols = satisfied_education:satisfied_health) %>% 
+  mutate(service_lab = name %>% 
+           recode("satisfied_education" = "Education",
+                  "satisfied_transportation" ="Transportation",
+                  "satisfied_laworder"= "Law & Order",
+                  "satisfied_health"=  "Health")) 
+
+t1%>%
+  drop_na(value)%>%
+  ggplot(aes(x=factor(Wave),y=value,color=service_lab))+
+    stat_summary(
+      aes(group=service_lab),
+    fun.y = mean,
+    geom = "point",
+    alpha = 0.5,
+    size = 2,
+    position = position_dodge(0.1)
+  ) +
+    stat_summary(aes(group=service_lab),
+                 fun.y = mean,
+    geom = "line",
+    alpha = 0.5,
+    size = 1,
+    position = position_dodge(0.1)
+  ) +
+    stat_summary(
+    fun.data = mean_cl_normal,
+    geom = "errorbar",
+    fun.args = list(conf.int = 0.95),
+    alpha = 0.25,
+    width = 0.1,
+    size = 1,
+    position = position_dodge(0.1)) +
+    scale_x_discrete(labels = wave_lab) +
+    geom_vline(xintercept = c(2.5,5.5),linetype="dashed")+
+  theme_classic()+
+  labs(title="",x="",y="Service evaluation",color="Service")
+  
+ 
+
+```
+
+
+
+
+
+## Partisanship
+
+```{r}
+LibRes_7waves %>% remove_labels() %>% 
+  filter(Wave==3) %>% 
+  count(Vote_Past,OnlyBibi)
+```
+
+
+```{r}
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  dplyr::select(survey,OnlyBibi,Vote_Past,Vote_Future,OnlyBibi_FV) %>%
+    tbl_summary(by = survey, 
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} / {N} ({p}%)"))
+  
+
+```
+
+
+```{r}
+
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  select(survey,OnlyBibi) %>% 
+  tbl_summary(by = OnlyBibi, 
+              statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n}"))
+
+
+
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  group_by(survey,OnlyBibi) %>% 
+  summarise(n = n()) %>% 
+  mutate(percent = ((n /sum (n)) %>% round(3))*100) %>% 
+  mutate(percent_lab = str_c(n," (",percent,"%)")) %>% 
+  filter(OnlyBibi %in% c("Anti Bibi","Only Bibi")) %>%
+  dplyr::select(survey,OnlyBibi,percent_lab) %>% 
+pivot_wider(names_from = OnlyBibi,values_from = percent_lab) %>% 
+  data_frame() %>% 
+  gt()
+
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  group_by(OnlyBibi) %>% 
+  summarise(n = n()) %>% 
+  mutate(percent = ((n /sum (n)) %>% round(3))*100) %>% 
+  mutate(percent_lab = str_c(n," (",percent,"%)")) %>% 
+  filter(OnlyBibi %in% c("Anti Bibi","Only Bibi")) %>%
+  dplyr::select(OnlyBibi,percent_lab) %>% 
+pivot_wider(names_from = OnlyBibi,values_from = percent_lab) %>% 
+  data_frame() %>% 
+  gt()
+
+LibRes_7waves %>% 
+  labelled::to_factor() %>% 
+  group_by(anti_bibi_bi) %>% 
+  summarise(n = n()) %>% 
+  mutate(percent = ((n /sum (n)) %>% round(3))*100) %>% 
+  mutate(percent_lab = str_c(n," (",percent,"%)")) %>% 
+  #filter(OnlyBibi %in% c("Anti Bibi","Only Bibi")) %>%
+  dplyr::select(anti_bibi_bi,percent_lab) %>% 
+pivot_wider(names_from = anti_bibi_bi,values_from = percent_lab) %>% 
+  data_frame() %>% 
+  gt()
+```
+
+```{r}
+LibRes_7waves %>% 
+  #filter(anti_bibi_bi %in% NA) %>% 
+  filter(OnlyBibi %in% NA) %>% 
+  #filter(OnlyBibi==0) %>% 
+  count()
+
+(1850-408)/9749
+
+LibRes_7waves %>% 
+  #filter(anti_bibi_bi %in% NA) %>% 
+  filter(OnlyBibi %in% 0) %>% 
+  #filter(OnlyBibi==0) %>% 
+  count(Vote_Past)
+
+
+3592/9749
+
+```
+
+
+```{r}
+LibRes_7waves %>% 
+  filter(OnlyBibi %in% 0) %>% 
+  count(OnlyBibi,Vote_Past,Wave,anti_bibi_bi,jewish)
+
+
+
+```
+
+
+## Descriptive statistics 
+
+
+## Summary statistics & correlations - DVs
+
+### Pooled
+```{r}
+
+
+LibRes_7waves %>%
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman",
+  title = "All surveys") 
+```
+
+
+### By Waves
+
+Wave 1
+
+```{r}
+
+LibRes_7waves %>%
+  filter(Wave==1) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+    filter(Wave==1) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman") 
+```
+
+
+Wave 2
+
+```{r}
+
+LibRes_7waves %>%
+  filter(Wave==2) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+    filter(Wave==2) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman") 
+```
+
+
+Wave 3
+
+```{r}
+
+LibRes_7waves %>%
+  filter(Wave==3) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+    filter(Wave==3) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman") 
+```
+
+
+
+Wave 4
+
+```{r}
+
+LibRes_7waves %>%
+  filter(Wave==4) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+    filter(Wave==4) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman") 
+```
+
+
+
+Wave 5
+
+```{r}
+
+LibRes_7waves %>%
+  filter(Wave==5) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+    filter(Wave==5) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman") 
+```
+
+
+
+Wave 6
+
+```{r}
+
+LibRes_7waves %>%
+  filter(Wave==6) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+    filter(Wave==6) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman") 
+```
+
+
+
+
+Wave 7
+
+```{r}
+
+LibRes_7waves %>%
+  filter(Wave==7) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+    filter(Wave==7) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman") 
+```
+
+
+
+### By block
+
+Pro-Netanyahu
+
+```{r}
+LibRes_7waves %>%
+  filter(anti_bibi_bi==0) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+  filter(anti_bibi_bi==0) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman") 
+```
+
+Anti-Netanyahu
+
+```{r}
+LibRes_7waves %>%
+  filter(anti_bibi_bi==1) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+sjmisc::descr(show="short") %>% 
+  as.tibble() %>% 
+  mutate(across(where(is.numeric), ~round(., 3))) %>% 
+  gt()
+
+LibRes_7waves %>%
+  filter(anti_bibi_bi==1) %>% 
+  select(satisfied_education,
+         satisfied_health,
+         satisfied_laworder,
+         satisfied_transportation) %>% 
+  sjPlot::tab_corr(triangle = "lower",
+                   na.deletion = "pairwise",
+  corr.method = "spearman") 
+```
+
+
+
+
+
+# Plot - Over time
+```{r}
+wave_lab = c("9/20","1/21","9/21","4/22","9/22","3/23","9/23")
+
+```
+
+
+
+
+```{r}
+
+
+p1 <- LibRes_7waves %>% 
+  filter(OnlyBibi %in% c(-1,1)) %>% 
+  ggplot(aes(x=factor(survey),y=satisfied_laworder,color=only_bibi_lab %>% to_factor()))+
+  stat_summary(
+    fun.y = mean,
+    geom = "point",
+    alpha = 0.5,
+    size = 2
+  ) +
+    stat_summary(aes(group=only_bibi_lab),
+    fun.y = mean,
+    geom = "line",
+    alpha = 0.5,
+    size = 1
+  ) +
+    stat_summary(
+    fun.data = mean_cl_normal,
+    geom = "errorbar",
+    fun.args = list(conf.int = 0.95),
+    alpha = 0.5,
+    width = 0.1,
+    size = 1) +
+      scale_x_discrete(labels = wave_lab)+
+  scale_y_continuous(breaks = c(0,0.5,1))+
+  geom_vline(xintercept = c(2.5,5.5),linetype="dashed")+
+  theme_classic()+
+  labs(title="Law and Order",x="",y="",color="")+
+  coord_cartesian(ylim = c(0,1))
+
+p2 <- LibRes_7waves %>% 
+  filter(OnlyBibi %in% c(-1,1)) %>% 
+  ggplot(aes(x=factor(survey),y=satisfied_education,color=only_bibi_lab %>% to_factor()))+
+  stat_summary(
+    fun.y = mean,
+    geom = "point",
+    alpha = 0.5,
+    size = 2
+  ) +
+    stat_summary(aes(group=only_bibi_lab),
+    fun.y = mean,
+    geom = "line",
+    alpha = 0.5,
+    size = 1
+  ) +
+    stat_summary(
+    fun.data = mean_cl_normal,
+    geom = "errorbar",
+    fun.args = list(conf.int = 0.95),
+    alpha = 0.5,
+    width = 0.1,
+    size = 1) +
+    scale_x_discrete(labels = rep("",7))+
+    scale_y_continuous(breaks = c(0,0.5,1))+
+  geom_vline(xintercept = c(2.5,5.5),linetype="dashed")+
+  theme_classic()+
+  labs(title="Education",x="",y="",color="")+
+  coord_cartesian(ylim = c(0,1))
+
+  
+p3 <- LibRes_7waves %>% 
+  filter(OnlyBibi %in% c(-1,1)) %>% 
+  ggplot(aes(x=factor(survey),y=satisfied_health,color=only_bibi_lab %>% to_factor()))+
+  stat_summary(
+    fun.y = mean,
+    geom = "point",
+    alpha = 0.5,
+    size = 2
+  ) +
+    stat_summary(aes(group=only_bibi_lab),
+    fun.y = mean,
+    geom = "line",
+    alpha = 0.5,
+    size = 1
+  ) +
+    stat_summary(
+    fun.data = mean_cl_normal,
+    geom = "errorbar",
+    fun.args = list(conf.int = 0.95),
+    alpha = 0.5,
+    width = 0.1,
+    size = 1) +
+    scale_x_discrete(labels = rep("",7))+
+    scale_y_continuous(breaks = c(0,0.5,1))+
+  geom_vline(xintercept = c(2.5,5.5),linetype="dashed")+
+  theme_classic()+
+  labs(title="Health",x="",y="",color="")+
+  coord_cartesian(ylim = c(0,1))
+
+p4 <- LibRes_7waves %>% 
+  filter(OnlyBibi %in% c(-1,1)) %>% 
+  ggplot(aes(x=factor(survey),y=satisfied_transportation,color=only_bibi_lab %>% to_factor()))+
+  stat_summary(
+    fun.y = mean,
+    geom = "point",
+    alpha = 0.5,
+    size = 2
+  ) +
+    stat_summary(aes(group=only_bibi_lab),
+    fun.y = mean,
+    geom = "line",
+    alpha = 0.5,
+    size = 1
+  ) +
+    stat_summary(
+    fun.data = mean_cl_normal,
+    geom = "errorbar",
+    fun.args = list(conf.int = 0.95),
+    alpha = 0.5,
+    width = 0.1,
+    size = 1) +
+    scale_x_discrete(labels = wave_lab)+
+    scale_y_continuous(breaks = c(0,0.5,1))+
+  geom_vline(xintercept = c(2.5,5.5),linetype="dashed")+
+  theme_classic()+
+  labs(title="Transportation",x="",y="",color="")+
+  coord_cartesian(ylim = c(0,1))
+
+
+p5 <- ggpubr::ggarrange(p2,p3,p1,p4,
+          ncol = 2,nrow = 2,
+          common.legend = T)
+
+p5
+
+#ggsave("myplot.png",width = 8,height = 6,dpi = 300)
+```
+
+```{r}
+LibRes_7waves %>% to_factor() %>% 
+  #drop_na(pre_post_2021,satisfied_laworder) %>% 
+  group_by(, OnlyBibi)%>% 
+  summarise(n = n()) %>% 
+  mutate(percent = ((n /sum (n)) %>% round(3))*100) %>% 
+  mutate(percent_lab = str_c(n," (",percent,"%)"))
+
+```
+
+
+
+
+# Models
+
+
+## OLS linear
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age)
+```
+
+
+```{r}
+tmod1_controls_2021 <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2_controls_2021 <- tmod1_controls_2021 %>% update(satisfied_education~.)
+tmod3_controls_2021 <- tmod1_controls_2021 %>% update(satisfied_health~.)
+tmod4_controls_2021 <- tmod1_controls_2021 %>% update(satisfied_transportation~.)
+
+
+
+
+tmod1_controls_2022 <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(educ_level)+
+                                        factor(educ_level)+
+                                        REGION +
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2_controls_2022 <- tmod1_controls_2022 %>% update(satisfied_education~.)
+tmod3_controls_2022 <- tmod1_controls_2022 %>% update(satisfied_health~.)
+tmod4_controls_2022 <- tmod1_controls_2022 %>% update(satisfied_transportation~.)
+
+```
+
+```{r}
+
+# Define models and corresponding service names
+models_2021 <- list(tmod1_controls_2021, tmod2_controls_2021, tmod3_controls_2021, tmod4_controls_2021)
+models_2022 <- list(tmod1_controls_2022, tmod2_controls_2022, tmod3_controls_2022, tmod4_controls_2022)
+
+services <- c("Law & Order", "Education", "Health", "Transportation")
+
+# Function to compute marginal effects
+compute_emmeans_2021 <- function(model, service) {
+  emmeans::emmeans(model, specs = ~ pre_post_2021 | anti_bibi_bi, data = t1 %>% drop_na(age)) %>%
+    pairs() %>%
+    broom::tidy() %>%
+    mutate(service = service)
+}
+
+# Apply function to all models
+t_2021_list <- purrr::map2(models_2021, services, compute_emmeans_2021)
+
+# Combine results
+t5_2021 <- bind_rows(t_2021_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral loser)",
+                             '1' = "Anti-Netanyahu\n(electoral winner)"),
+    marginal_effect_low_ci = estimate - 1.96 * std.error,
+    marginal_effect_low_hi = estimate + 1.96 * std.error
+  )
+
+
+
+p_2021 <- t5_2021 %>% 
+  ggplot(aes(x=marginal_effect,y=estimate,color=service))+
+  geom_point(position = position_dodge(0.2))+
+  geom_pointrange(aes(ymin=marginal_effect_low_ci,ymax = marginal_effect_low_hi),position = position_dodge(0.2))+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  scale_color_discrete(guide = guide_legend(reverse = TRUE))+
+  labs(title="Change 2021",x="Partisanship",y="Marginal effects")+
+  #scale_y_continuous(trans='log10', breaks = breaks,labels = labels) + # Customize the number of breaks
+  coord_flip()+
+theme_bw()+
+  theme(panel.grid.major.y = element_blank())
+
+
+
+
+# Function to compute marginal effects
+compute_emmeans_2022 <- function(model, service) {
+  emmeans::emmeans(model, specs = ~ pre_post_2022 | anti_bibi_bi, data = t1 %>% drop_na(age)) %>%
+    pairs() %>%
+    broom::tidy() %>%
+    mutate(service = service)
+}
+
+# Apply function to all models
+t_2022_list <- purrr::map2(models_2022, services, compute_emmeans_2022)
+
+# Combine results
+t5_2022 <- bind_rows(t_2022_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral loser)",
+                             '1' = "Anti-Netanyahu\n(electoral winner)"),
+    marginal_effect_low_ci = estimate - 1.96 * std.error,
+    marginal_effect_low_hi = estimate + 1.96 * std.error
+  )
+
+
+
+
+p_2022 <- t5_2022 %>% 
+  ggplot(aes(x=marginal_effect,y=estimate,color=service))+
+  geom_point(position = position_dodge(0.2))+
+  geom_pointrange(aes(ymin=marginal_effect_low_ci,ymax = marginal_effect_low_hi),position = position_dodge(0.2))+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  scale_color_discrete(guide = guide_legend(reverse = TRUE))+
+  labs(title="Change 2021",x="Partisanship",y="Marginal effects")+
+  #scale_y_continuous(trans='log10', breaks = breaks,labels = labels) + # Customize the number of breaks
+  coord_flip()+
+theme_bw()+
+  theme(panel.grid.major.y = element_blank())
+
+
+```
+
+
+```{r,fig.width=12,fig.height=4}
+ggpubr::ggarrange(p_2021,p_2022,
+                  common.legend = T,
+                  legend = "right")
+```
+
+##Regression tables
+
+
+```{r}
+tmod1_controls_2021 <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2_controls_2021 <- tmod1_controls_2021 %>% update(satisfied_education~.)
+tmod3_controls_2021 <- tmod1_controls_2021 %>% update(satisfied_health~.)
+tmod4_controls_2021 <- tmod1_controls_2021 %>% update(satisfied_transportation~.)
+
+
+
+
+tmod1_controls_2022 <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2_controls_2022 <- tmod1_controls_2022 %>% update(satisfied_education~.)
+tmod3_controls_2022 <- tmod1_controls_2022 %>% update(satisfied_health~.)
+tmod4_controls_2022 <- tmod1_controls_2022 %>% update(satisfied_transportation~.)
+
+```
+
+
+```{r}
+predictor_labels <- c(
+  "pre_post_2021" = "Post 2021 change",
+  "anti_bibi_bi" = "Anti-Netanyahu",
+  "pre_post_2021:anti_bibi_bi" = "Post 2021 change × Anti-Netanyahu",
+    "pre_post_2022" = "Post 2022 change",
+    "pre_post_2022:anti_bibi_bi" = "Post 2022 change × Anti-Netanyahu",
+  "factor(GENDER)Male" = "Male",
+  "poly(age, 2)1" = "Age",
+  "poly(age, 2)2" = "Age^2",
+  "factor(INCOME)2" = "Below average",
+  "factor(INCOME)3" = "Average",
+  "factor(INCOME)4" = "Above average",
+  "factor(INCOME)5" = "High above average Income",
+  "factor(educ_level)2" = "High school diploma",
+  "factor(educ_level)3" = "Post HS education",
+  "factor(educ_level)4" = "College education or higher",
+  "REGIONNorth" = "North",
+  "REGIONHaifa" = "Haifa",
+  "REGIONCenter" = "Center",
+  'REGIONTel Aviv' = "Tel-Aviv",
+  'REGIONSouth' = "South",
+  'REGIONJudea & Samaria' = "Judea & Samaria",
+  "jewishNon-Jewish" = "Non-Jewish",
+  "RELIGIOSITY_ALLTraditional" = "Traditional",
+  "RELIGIOSITY_ALLReligious" = "Religious",
+  "RELIGIOSITY_ALLHaredi" = "Haredi/Very religious"
+)
+```
+
+```{r}
+
+tab_model(tmod1_controls_2021,
+          tmod2_controls_2021,
+          tmod3_controls_2021,
+          tmod4_controls_2021,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          order.terms = c(1:3,24,4:23),
+          dv.labels = c("Law & Order","Education","Health","Transportation"))#,)
+			
+
+#tab_model(tmod1.controls,
+#          tmod2.controls,
+#          tmod3.controls,
+#          tmod4.controls)#,)
+```
+
+
+
+```{r}
+
+
+tab_model(tmod1_controls_2022,
+          tmod2_controls_2022,
+          tmod3_controls_2022,
+          tmod4_controls_2022,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          order.terms = c(1:3,24,4:23),
+          dv.labels = c("Law & Order","Education","Health","Transportation"))#,)
+```
+
+
+
+```{r}
+emmeans(tmod1_controls_2021, specs = ~ anti_bibi_bi | pre_post_2021, data = t1 %>% drop_na(age)) %>% 
+contrast(method = "revpairwise")  
+
+emmeans(tmod2_controls_2021, specs = ~ anti_bibi_bi | pre_post_2021, data = t1 %>% drop_na(age)) %>% 
+contrast(method = "revpairwise")  
+
+emmeans(tmod3_controls_2021, specs = ~ anti_bibi_bi | pre_post_2021, data = t1 %>% drop_na(age)) %>% 
+contrast(method = "revpairwise")  
+
+emmeans(tmod4_controls_2021, specs = ~ anti_bibi_bi | pre_post_2021, data = t1 %>% drop_na(age)) %>% 
+contrast(method = "revpairwise")  
+
+
+```
+
+
+## No controls
+
+2021 change
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age)
+
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,
+          tmod2,
+          tmod3,
+          tmod4,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          order.terms = c(1:3,24,4:23),
+          dv.labels = c("Law & Order","Education","Health","Transportation"))#,))#,)
+```
+
+
+2022 change
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age)
+
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,
+          tmod2,
+          tmod3,
+          tmod4,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = c("Law & Order","Education","Health","Transportation"))#,))#,)
+```
+
+
+## R-square delta
+
+
+```{r}
+tmod1_controls_2021_x <- lm(satisfied_laworder ~ pre_post_2021+
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2_controls_2021_x <- tmod1_controls_2021_x %>% update(satisfied_education~.)
+tmod3_controls_2021_x <- tmod1_controls_2021_x %>% update(satisfied_health~.)
+tmod4_controls_2021_x <- tmod1_controls_2021_x %>% update(satisfied_transportation~.)
+
+
+
+
+tmod1_controls_2022_x <- lm(satisfied_laworder ~ pre_post_2022+
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(educ_level)+
+                                        factor(educ_level)+
+                                        REGION +
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2_controls_2022_x <- tmod1_controls_2022_x %>% update(satisfied_education~.)
+tmod3_controls_2022_x <- tmod1_controls_2022_x %>% update(satisfied_health~.)
+tmod4_controls_2022_x <- tmod1_controls_2022_x %>% update(satisfied_transportation~.)
+
+```
+
+
+
+```{r}
+
+tab_model(tmod1_controls_2021_x,
+          tmod2_controls_2021_x,
+          tmod3_controls_2021_x,
+          tmod4_controls_2021_x,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          order.terms = c(1:3,24,4:23),
+          dv.labels = c("Law & Order","Education","Health","Transportation"))#,)
+			
+
+tab_model(tmod1_controls_2022_x,
+          tmod2_controls_2022_x,
+          tmod3_controls_2022_x,
+          tmod4_controls_2022_x,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          order.terms = c(1:3,24,4:23),
+          dv.labels = c("Law & Order","Education","Health","Transportation"))#,)
+
+#tab_model(tmod1.controls,
+#          tmod2.controls,
+#          tmod3.controls,
+#          tmod4.cont
+
+```
+```{r}
+models <- list(
+  tmod1_controls_2021_x,tmod1_controls_2021,
+  tmod2_controls_2021_x,tmod2_controls_2021,
+  tmod3_controls_2021_x,tmod3_controls_2021,
+  tmod4_controls_2021_x,tmod4_controls_2021
+)
+
+model_names <- rep(c("Law & Order","Education","Health","Transport"),each=2)
+
+model_type <- rep(c("Controls","Controls_and_partisanship"),4)
+
+# Create tibble with R-squared values
+rsq_tibble <- tibble(
+  model = model_names,
+  model_type = model_type,
+  r_squared = map_dbl(models, ~ round(summary(.x)$r.squared,3))
+) %>% 
+  pivot_wider(names_from = model_type,values_from = r_squared) %>% 
+  mutate(delta = Controls_and_partisanship-Controls)
+
+
+rsq_tibble
+```
+```{r}
+models <- list(
+  tmod1_controls_2022_x,tmod1_controls_2022,
+  tmod2_controls_2022_x,tmod2_controls_2022,
+  tmod3_controls_2022_x,tmod3_controls_2022,
+  tmod4_controls_2022_x,tmod4_controls_2022
+)
+
+model_names <- rep(c("Law & Order","Education","Health","Transport"),each=2)
+
+model_type <- rep(c("Controls","Controls_and_partisanship"),4)
+
+# Create tibble with R-squared values
+rsq_tibble <- tibble(
+  model = model_names,
+  model_type = model_type,
+  r_squared = map_dbl(models, ~ round(summary(.x)$r.squared,3))
+) %>% 
+  pivot_wider(names_from = model_type,values_from = r_squared) %>% 
+  mutate(delta = Controls_and_partisanship-Controls)
+
+
+rsq_tibble
+```
+
+
+## Binary logit
+
+change 2021
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) 
+
+tmod1 <- glm(satisfied_laworder_bi ~ pre_post_2021*(anti_bibi_bi),family = "binomial", t1)
+tmod2 <- tmod1 %>% update(satisfied_education_bi~.)
+tmod3 <- tmod1 %>% update(satisfied_health_bi~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation_bi~.)
+
+tmod1.controls <- glm(satisfied_laworder_bi ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL,family = "binomial", t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education_bi~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health_bi~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation_bi~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                             show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2),
+          show.loglik = T,
+          show.aic = T)#,)
+
+
+
+```
+
+
+
+change 2022
+
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) 
+
+tmod1 <- glm(satisfied_laworder_bi ~ pre_post_2022*(anti_bibi_bi),family = "binomial", t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+tmod1.controls <- glm(satisfied_laworder_bi ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL,family = "binomial", t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                             show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2),
+          show.loglik = T,
+          show.aic = T)#,)
+
+
+
+
+```
+
+
+## Ordinal
+
+change 2021
+
+```{r}
+t1 <- LibRes_7waves %>% 
+  mutate(POL_SAT_LawOrder_n = POL_SAT_LawOrder %>% remove_labels() %>% na_if(5),
+         POL_SAT_Education_n = POL_SAT_Education %>% remove_labels() %>% na_if(5),
+         POL_SAT_Health_n = POL_SAT_Health %>% remove_labels() %>% na_if(5),
+         POL_SAT_Transportation_n = POL_SAT_Transportation %>% remove_labels() %>% na_if(5)) %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age,
+         RELIGIOSITY_ALL = RELIGIOSITY_ALL %>% to_factor()) 
+
+t1 <- t1 %>% as.data.frame()
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- MASS::polr(factor(POL_SAT_LawOrder_n) ~ pre_post_2021*(anti_bibi_bi), data = t1, Hess=TRUE)
+tmod2 <- tmod1 %>% update(factor(POL_SAT_Education_n)~.)
+tmod3 <- tmod1 %>% update(factor(POL_SAT_Health_n)~.)
+tmod4 <- tmod1 %>% update(factor(POL_SAT_Transportation_n)~.)
+
+
+
+tmod1.controls <- MASS::polr(factor(POL_SAT_LawOrder_n) ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        factor(REGION)+
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age),Hess=TRUE)
+
+tmod2.controls <- tmod1.controls %>% update(factor(POL_SAT_Education_n)~.)
+tmod3.controls <- tmod1.controls %>% update(factor(POL_SAT_Health_n)~.)
+tmod4.controls <- tmod1.controls %>% update(factor(POL_SAT_Transportation_n)~.)
+
+
+
+
+
+
+tab_model(tmod1,tmod1.controls,tmod2,tmod2.controls,tmod3,tmod3.controls,tmod4,tmod4.controls,
+          show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+                    show.loglik = T,
+          show.aic = T,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2)
+)
+
+```
+
+
+
+
+change 2022
+
+```{r}
+tmod1 <- MASS::polr(factor(POL_SAT_LawOrder_n) ~ pre_post_2022*(anti_bibi_bi), data = t1, Hess=TRUE)
+tmod2 <- tmod1 %>% update(factor(POL_SAT_Education_n)~.)
+tmod3 <- tmod1 %>% update(factor(POL_SAT_Health_n)~.)
+tmod4 <- tmod1 %>% update(factor(POL_SAT_Transportation_n)~.)
+
+
+
+tmod1.controls <- MASS::polr(factor(POL_SAT_LawOrder_n) ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        factor(REGION)+
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age),Hess=TRUE)
+
+tmod2.controls <- tmod1.controls %>% update(factor(POL_SAT_Education_n)~.)
+tmod3.controls <- tmod1.controls %>% update(factor(POL_SAT_Health_n)~.)
+tmod4.controls <- tmod1.controls %>% update(factor(POL_SAT_Transportation_n)~.)
+
+
+
+
+
+
+tab_model(tmod1,tmod1.controls,tmod2,tmod2.controls,tmod3,tmod3.controls,tmod4,tmod4.controls,
+          show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+                    show.loglik = T,
+          show.aic = T,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2)
+)
+
+```
+
+
+
+## Excluding Ultra-orthodox
+
+```{r}
+
+LibRes_7waves_ex_Charedim <- LibRes_7waves %>% 
+  filter(RELIGIOSITY_ALL!=4)
+```
+
+
+change 2021
+
+```{r}
+t1 <- LibRes_7waves_ex_Charedim %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves_ex_Charedim$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves_ex_Charedim$INCOME %>% remove_labels(),
+         age = LibRes_7waves_ex_Charedim$Age)
+
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                       factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+
+
+change 2022
+
+
+
+```{r}
+t1 <- LibRes_7waves_ex_Charedim %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves_ex_Charedim$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves_ex_Charedim$INCOME %>% remove_labels(),
+         age = LibRes_7waves_ex_Charedim$Age)
+
+
+tmod1 <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+
+## Jewish population
+
+```{r}
+LibRes_7waves_jewish <- LibRes_7waves %>% filter(RELIGION==1)
+```
+
+change 2021
+
+```{r}
+t1 <- LibRes_7waves_jewish %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves_jewish$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves_jewish$INCOME %>% remove_labels(),
+         age = LibRes_7waves_jewish$Age)
+
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       #jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+
+
+change 2022
+
+
+```{r}
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       #jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+
+## Excluding campaign waves
+
+change 2021
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) %>% 
+  filter(Wave %in% c(1,3,4,6,7))
+
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+
+```
+
+
+change 2022
+
+```{r}
+
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+
+```
+
+## Multilevel models
+
+```{r}
+yishuv_string_coding_raw <- read_excel("data/yishuv_string_coding.xlsx")
+yishuv_string_coding <- yishuv_string_coding_raw %>%
+  rename(residence_place_name = 4,
+         residence_place_symbol = 5) %>% 
+  mutate(residence_place_name = residence_place_name %>% na_if("NA"),
+           residence_place_symbol = residence_place_symbol %>% na_if("NA") %>%  
+           stringr::str_pad(4, pad = "0")) %>% 
+mutate(wave_id = str_c(Wave,"_",id)) %>% 
+  dplyr::select(id,Wave,wave_id,residence_place_name,residence_place_symbol) %>% 
+  drop_na(residence_place_name)
+
+
+data_with_localities <- LibRes_7waves %>% left_join(yishuv_string_coding,  by = c("wave_id")) %>% distinct(wave_id, .keep_all = T)
+#view(data_with_localities)
+```
+
+change 2021
+
+```{r}
+t1 <- data_with_localities %>% to_factor() %>% 
+  mutate(INCOME = data_with_localities$INCOME %>% remove_labels(),
+         age = data_with_localities$Age)%>% 
+  drop_na(residence_place_symbol) 
+
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lme4::lmer(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi) + (1|residence_place_symbol), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lme4::lmer(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL + (1|residence_place_symbol), t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+
+
+change 2022
+
+```{r}
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lme4::lmer(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi) + (1|residence_place_symbol), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lme4::lmer(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL + (1|residence_place_symbol), t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+
+### Random slope 
+
+```{r}
+t1 <- data_with_localities %>% to_factor() %>% 
+  mutate(INCOME = data_with_localities$INCOME %>% remove_labels(),
+         age = data_with_localities$Age)%>% 
+  drop_na(residence_place_symbol) 
+
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lme4::lmer(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi) + (pre_post_2021|residence_place_symbol), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lme4::lmer(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL + (pre_post_2021|residence_place_symbol), t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+
+change 2022
+
+```{r}
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lme4::lmer(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi) + (pre_post_2022|residence_place_symbol), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lme4::lmer(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL + (pre_post_2022|residence_place_symbol), t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+
+
+
+
+## Interactions
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age)
+
+
+```
+
+
+
+```{r}
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL), t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1.controls,
+          tmod2.controls,
+          tmod3.controls,
+          tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+                    pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=1))#,)
+
+#tab_model(tmod1.controls,
+#          tmod2.controls,
+#          tmod3.controls,
+#          tmod4.controls)#,)
+```
+
+
+```{r}
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL), t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+tab_model(tmod1.controls,
+          tmod2.controls,
+          tmod3.controls,
+          tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+                    pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=1))#,)
+
+
+
+#tab_model(tmod1.controls,
+#          tmod2.controls,
+#          tmod3.controls,
+#          tmod4.controls)#,)
+```
+
+
+## Recoding Yemina as pro-Bibi and Ra'am as aAnti-Bibi
+
+```{r}
+t1 <- LibRes_7waves %>% 
+  mutate(anti_bibi_bi = case_when(
+    Wave%in% 3:5 & Vote_Past==5 ~ 0, #Vote for Yemina in 2021
+    Wave%in% 6:7 & Vote_Past==13 ~ 0, #Vote for Jewish home in 2022
+    Wave%in% 3:5 & Vote_Past==13 ~ 1, # Vote for Ra'am in 2021
+    Wave%in% 6:7 & Vote_Past==8 ~ 1, # Vote for Ra'am in 2022
+    TRUE ~ anti_bibi_bi
+  ))%>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) 
+
+```
+
+
+```{r}
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                       factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+```{r}
+
+#LibRes_7waves_jewish %>% count(POL_SAT_Education)
+tmod1 <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi), data = t1)
+tmod2 <- tmod1 %>% update(satisfied_education~.)
+tmod3 <- tmod1 %>% update(satisfied_health~.)
+tmod4 <- tmod1 %>% update(satisfied_transportation~.)
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                       factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+
+tab_model(tmod1,tmod1.controls,
+          tmod2,tmod2.controls,
+          tmod3,tmod3.controls,
+          tmod4,tmod4.controls,
+                  show.ci = F,
+                  show.se = T,
+                  collapse.se = T,
+                  emph.p = F,
+          pred.labels = predictor_labels,
+          #order.terms = c(1:3,24,4:23),
+          dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
+```
+
+
+## Weighted regression analysis
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age)
+```
+
+
+
+```{r}
+study_data_t1 <- LibRes_7waves %>% remove_labels() %>% as.data.frame() %>% 
+  #dplyr::select(female,
+  #              age_group) %>% 
+  mutate(GENDER_w = GENDER %>%  as_factor(),
+         INCOME_w = INCOME %>% as_factor(),
+         educ_level_w = educ_level %>% as_factor(),
+         REGION_w = REGION %>% as_factor(),
+         jewish_w = jewish %>% as_factor(),
+         RELIGIOSITY_ALL_w = RELIGIOSITY_ALL %>% as_factor()) %>% 
+  mutate(educ_level_w = recode(educ_level_w,
+                            `1` = 1,#no HS
+                            `2` = 1,#no Bagrut
+                            `3` = 2,#bagrut
+                            `4` = 3,#Post HS, non academic
+                            `5` = 4,#academic, partial
+                            `6` = 4,#BA
+                            `7` = 5,#MA
+                            `8` = 6),#PHD
+ INCOME_w = recode(INCOME_w,
+                            `1` = 1,#far below average
+                            `2` = 1,#below average
+                            `3` = 2,#average
+                            `4` = 3,#above average
+                            `5` = 3),#far above average
+)
+
+
+```
+
+
+
+```{r}
+#https://medium.com/@coraghenry/survey-skills-in-r-6c99e31a05e7
+# https://zacharylhertz.github.io/posts/2022/05/weighting-surveys
+
+library(weights)
+set.seed(2025)
+
+wpct(study_data_t1$educ_level_w)
+wpct(study_data_t1$INCOME_w)
+```
+
+```{r}
+study_data_t1 %>%  #to_factor() %>%
+  dplyr::select(household_income_gross_cat_2) %>% 
+  #drop_na() %>% 
+  #names()
+  tbl_summary(statistic = list(
+      all_continuous() ~ "{median}, {mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"))
+```
+
+
+```{r}
+female_target <- c(.5, .5)
+education_target <- c(0.087, 0.196, 0.094, 0.265, 0.215, 0.127)
+migration_background_target <- c(.74, .26) 
+household_income_gross_cat_target <- c(0.2,0.2,0.2,0.2,0.2)
+
+
+
+```
+
+```{r}
+names(female_target) <- levels(study_data_t1$female)# c("0","1")
+names(age_group_target) <- levels(study_data_t1$age_group) # c("2", "3", "4", "5", "6", "7")
+names(education_target) <- levels(study_data_t1$education)
+names(migration_background_target) <- levels(study_data_t1$migration_background)
+names(household_income_gross_cat_target) <- levels(study_data_t1$household_income_gross_cat)
+
+```
+
+```{r}
+targets <- list(female_target, age_group_target, education_target,migration_background_target,household_income_gross_cat_target)
+names(targets) <- c("female", "age_group","education","migration_background","household_income_gross_cat")
+
+
+targets
+```
+
+
+
+```{r}
+library(anesrake)
+study_data_t1$caseid <- 1:nrow(study_data_t1) 
+```
+
+
+```{r}
+# Perform raking
+raking_result <- anesrake(inputter = targets, 
+                          dataframe = study_data_t1, 
+                          caseid = study_data_t1$caseid) 
+                          #cap = 8, type = "pctlim", pctlim=.025, 
+                          
+# Summary of raking weights
+summary(raking_result)
+```
+
+
+
+
+
+# Marginal effects
+
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age)
+
+tmod1_controls_2021 <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2_controls_2021 <- tmod1_controls_2021 %>% update(satisfied_education~.)
+tmod3_controls_2021 <- tmod1_controls_2021 %>% update(satisfied_health~.)
+tmod4_controls_2021 <- tmod1_controls_2021 %>% update(satisfied_transportation~.)
+
+
+
+
+tmod1_controls_2022 <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(educ_level)+
+                                        factor(educ_level)+
+                                        REGION +
+                       jewish+
+                         RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+tmod2_controls_2022 <- tmod1_controls_2022 %>% update(satisfied_education~.)
+tmod3_controls_2022 <- tmod1_controls_2022 %>% update(satisfied_health~.)
+tmod4_controls_2022 <- tmod1_controls_2022 %>% update(satisfied_transportation~.)
+
+```
+
+```{r}
+
+# Define models and corresponding service names
+models_2021 <- list(tmod1_controls_2021, tmod2_controls_2021, tmod3_controls_2021, tmod4_controls_2021)
+models_2022 <- list(tmod1_controls_2022, tmod2_controls_2022, tmod3_controls_2022, tmod4_controls_2022)
+
+services <- c("Law & Order", "Education", "Health", "Transportation")
+
+# Function to compute marginal effects
+compute_emmeans_2021 <- function(model, service) {
+  emmeans::emmeans(model, specs = ~ pre_post_2021 | anti_bibi_bi, data = t1 %>% drop_na(age)) %>%
+    pairs() %>%
+    broom::tidy() %>%
+    mutate(service = service)
+}
+
+# Apply function to all models
+t_2021_list <- purrr::map2(models_2021, services, compute_emmeans_2021)
+
+
+results_2021 <- lapply(models_2021, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2021:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2021 <- bind_rows(results_2021, .id = "model_id")
+
+
+# Combine results
+t5_2021 <- bind_rows(t_2021_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral loser)",
+                             '1' = "Anti-Netanyahu\n(electoral winner)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  dplyr::select(term,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2021) %>% 
+  dplyr::select(-model_id)
+
+
+# Function to compute marginal effects
+compute_emmeans_2022 <- function(model, service) {
+  emmeans::emmeans(model, specs = ~ pre_post_2022 | anti_bibi_bi, data = t1 %>% drop_na(age)) %>%
+    pairs() %>%
+    broom::tidy() %>%
+    mutate(service = service)
+}
+
+# Apply function to all models
+t_2022_list <- purrr::map2(models_2022, services, compute_emmeans_2022)
+
+
+results_2022 <- lapply(models_2022, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2022:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2022 <- bind_rows(results_2022, .id = "model_id")
+
+
+# Combine results
+t5_2022 <- bind_rows(t_2022_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral loser)",
+                             '1' = "Anti-Netanyahu\n(electoral winner)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  dplyr::select(term,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2022) %>% 
+  dplyr::select(-model_id)
+
+```
+
+
+```{r}
+marginal_effects <- 
+  bind_rows(t5_2021,
+            t5_2022) 
+
+
+marginal_effects %>% 
+  gt::gt()
+```
+
+Mean change
+```{r}
+t1_2021 %>% bind_rows(t2_2021,t3_2021,t4_2021,
+                      t1_2022,t2_2022,t3_2022,t4_2022) %>% 
+  mutate(estimate = estimate*-1,
+         statistic = statistic*-1,
+    marginal_effect = anti_bibi_bi %>% 
+           recode('0' = "Diff Pro-Netanyahu",
+                  '1' = "Diff Anti-Netanyahu")) %>% 
+  mutate(dyad = "change 2022") %>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  dplyr::select(term,
+                marginal_effect,
+                service,
+                diff) %>%
+  group_by(term,
+           marginal_effect) %>% 
+  summarise(mean_marginal_effect = mean(diff,na.rm=T))
+
+
+```
+
+
+# Dyads
+
+```{r}
+
+services <- c("Law & Order", "Education", "Health", "Transportation")
+
+# Function to compute marginal effects
+compute_emmeans_2021 <- function(model, service) {
+  emmeans::emmeans(model, specs = ~ pre_post_2021 | anti_bibi_bi, data = t1 %>% drop_na(age)) %>%
+    pairs() %>%
+    broom::tidy() %>%
+    mutate(service = service)
+}
+
+# Function to compute marginal effects
+compute_emmeans_2022 <- function(model, service) {
+  emmeans::emmeans(model, specs = ~ pre_post_2022 | anti_bibi_bi, data = t1 %>% drop_na(age)) %>%
+    pairs() %>%
+    broom::tidy() %>%
+    mutate(service = service)
+}
+```
+
+
+## 2021 change
+
+### Sep 2020 - Sep 2021
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) %>% 
+  filter(Wave %in% c(1,3))
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+# Define models and corresponding service names
+models_2021 <- list(tmod1.controls, tmod2.controls, tmod3.controls, tmod4.controls)
+
+# Apply function to all models
+t_2021_list <- purrr::map2(models_2021, services, compute_emmeans_2021)
+
+results_2021 <- lapply(models_2021, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2021:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2021 <- bind_rows(results_2021, .id = "model_id")
+
+# Combine results
+dyad_sep_2020_sep_2021_full <- bind_rows(t_2021_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral loser)",
+                             '1' = "Anti-Netanyahu\n(electoral winner)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  mutate(dyad = "Sep 2020 - Sep 2021") 
+
+dyad_sep_2020_sep_2021 <- dyad_sep_2020_sep_2021_full %>% 
+  dplyr::select(dyad,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2021) %>% 
+  dplyr::select(-model_id) 
+
+
+```
+
+
+
+### Sep 2020 - April 2022
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) %>% 
+  filter(Wave %in% c(1,4))
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+# Define models and corresponding service names
+models_2021 <- list(tmod1.controls, tmod2.controls, tmod3.controls, tmod4.controls)
+
+# Apply function to all models
+t_2021_list <- purrr::map2(models_2021, services, compute_emmeans_2021)
+
+results_2021 <- lapply(models_2021, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2021:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2021 <- bind_rows(results_2021, .id = "model_id")
+
+# Combine results
+dyad_sep_2020_apr_2022_full <- bind_rows(t_2021_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral loser)",
+                             '1' = "Anti-Netanyahu\n(electoral winner)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  mutate(dyad = "Sep 2020 - Apr 2022") 
+
+
+dyad_sep_2020_apr_2022 <- dyad_sep_2020_apr_2022_full %>% 
+  dplyr::select(dyad,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2021) %>% 
+  dplyr::select(-model_id) 
+
+
+```
+
+
+### Jan 2021 - Sep 2021
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) %>% 
+  filter(Wave %in% c(2,3))
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+# Define models and corresponding service names
+models_2021 <- list(tmod1.controls, tmod2.controls, tmod3.controls, tmod4.controls)
+
+# Apply function to all models
+t_2021_list <- purrr::map2(models_2021, services, compute_emmeans_2021)
+
+results_2021 <- lapply(models_2021, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2021:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2021 <- bind_rows(results_2021, .id = "model_id")
+
+# Combine results
+dyad_jan_2021_sep_2021_full <- bind_rows(t_2021_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral loser)",
+                             '1' = "Anti-Netanyahu\n(electoral winner)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  mutate(dyad = "Jan 2021 - Sep 2021") 
+
+dyad_jan_2021_sep_2021 <- dyad_jan_2021_sep_2021_full %>% 
+  dplyr::select(dyad,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2021) %>% 
+  dplyr::select(-model_id) 
+
+```
+
+
+
+
+### Jan 2021 - Apr 2022
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) %>% 
+  filter(Wave %in% c(2,4))
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+# Define models and corresponding service names
+models_2021 <- list(tmod1.controls, tmod2.controls, tmod3.controls, tmod4.controls)
+
+# Apply function to all models
+t_2021_list <- purrr::map2(models_2021, services, compute_emmeans_2021)
+
+results_2021 <- lapply(models_2021, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2021:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2021 <- bind_rows(results_2021, .id = "model_id")
+
+# Combine results
+dyad_jan_2021_apr_2022_full <- bind_rows(t_2021_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral loser)",
+                             '1' = "Anti-Netanyahu\n(electoral winner)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  mutate(dyad = "Jan 2021 - Apr 2022") 
+
+dyad_jan_2021_apr_2022 <- dyad_jan_2021_apr_2022_full %>% 
+  dplyr::select(dyad,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2021) %>% 
+  dplyr::select(-model_id) 
+
+
+```
+
+Table change 2021
+```{r}
+dyad_2021 <- 
+  bind_rows(dyad_sep_2020_sep_2021,
+            dyad_sep_2020_apr_2022,
+            dyad_jan_2021_sep_2021,
+            dyad_jan_2021_apr_2022) %>% 
+  arrange(service)
+
+
+
+dyad_2021 %>% gt::gt()
+```
+
+
+Plot Change 2021
+```{r,fig.width=8}
+dyad_2021_full <- 
+  bind_rows(dyad_sep_2020_sep_2021_full,
+            dyad_sep_2020_apr_2022_full,
+            dyad_jan_2021_sep_2021_full,
+            dyad_jan_2021_apr_2022_full)
+
+dyad_2021_full %>% 
+  #filter(service=="Law & Order") %>% 
+  ggplot(aes(x=marginal_effect,y=estimate,color=dyad))+
+  geom_point(position = position_dodge(0.2))+
+  geom_pointrange(aes(ymin=marginal_effect_low_ci,ymax = marginal_effect_low_hi),position = position_dodge(0.2))+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  scale_color_discrete(guide = guide_legend(reverse = TRUE))+
+  labs(title="Change 2021",x="Partisanship",y="Marginal effects")+
+  #scale_y_continuous(trans='log10', breaks = breaks,labels = labels) + # Customize the number of breaks
+  coord_flip()+
+  facet_wrap(vars(service))+
+theme_bw()+
+  theme(panel.grid.major.y = element_blank())
+
+```
+
+
+## 2022 change
+
+
+### Apr 2022 - March 2023
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) %>% 
+  filter(Wave %in% c(4,6))
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+# Define models and corresponding service names
+models_2022 <- list(tmod1.controls, tmod2.controls, tmod3.controls, tmod4.controls)
+
+# Apply function to all models
+t_2022_list <- purrr::map2(models_2022, services, compute_emmeans_2022)
+
+
+results_2022 <- lapply(models_2022, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2022:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2022 <- bind_rows(results_2022, .id = "model_id")
+
+
+# Combine results
+dyad_apr_2022_march_2023_full <- bind_rows(t_2022_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral winner)",
+                             '1' = "Anti-Netanyahu\n(electoral loser)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  mutate(dyad = "Apr 2022 - March 2023") 
+
+dyad_apr_2022_march_2023 <- dyad_apr_2022_march_2023_full %>% 
+  dplyr::select(dyad,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2022) %>% 
+  dplyr::select(-model_id) 
+
+
+```
+
+
+
+### Apr 2022 - Sep 2023
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) %>% 
+  filter(Wave %in% c(4,7))
+
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+# Define models and corresponding service names
+models_2022 <- list(tmod1.controls, tmod2.controls, tmod3.controls, tmod4.controls)
+
+# Apply function to all models
+t_2022_list <- purrr::map2(models_2022, services, compute_emmeans_2022)
+
+# Apply function to all models
+t_2022_list <- purrr::map2(models_2022, services, compute_emmeans_2022)
+
+
+results_2022 <- lapply(models_2022, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2022:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2022 <- bind_rows(results_2022, .id = "model_id")
+# Combine results
+dyad_apr_2022_sep_2023_full <- bind_rows(t_2022_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral winner)",
+                             '1' = "Anti-Netanyahu\n(electoral loser)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  mutate(dyad = "Apr 2022 - Sep 2023") 
+
+dyad_apr_2022_sep_2023 <- dyad_apr_2022_sep_2023_full %>% 
+  dplyr::select(dyad,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2022) %>% 
+  dplyr::select(-model_id) 
+
+```
+
+
+### Oct 2022 - March 2023
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) %>% 
+  filter(Wave %in% c(5,6))
+
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+# Define models and corresponding service names
+models_2022 <- list(tmod1.controls, tmod2.controls, tmod3.controls, tmod4.controls)
+
+# Apply function to all models
+t_2022_list <- purrr::map2(models_2022, services, compute_emmeans_2022)
+
+# Apply function to all models
+t_2022_list <- purrr::map2(models_2022, services, compute_emmeans_2022)
+
+
+results_2022 <- lapply(models_2022, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2022:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2022 <- bind_rows(results_2022, .id = "model_id")
+                        
+# Combine results
+dyad_oct_2022_march_2023_full <- bind_rows(t_2022_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral winner)",
+                             '1' = "Anti-Netanyahu\n(electoral loser)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  mutate(dyad = "Oct 2022 - March 2023") 
+
+dyad_oct_2022_march_2023 <- dyad_oct_2022_march_2023_full %>% 
+  dplyr::select(dyad,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2022) %>% 
+  dplyr::select(-model_id) 
+
+```
+
+
+
+### Oct 2022 - Sep 2023
+
+```{r}
+t1 <- LibRes_7waves %>% to_factor() %>% 
+  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
+         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
+         age = LibRes_7waves$Age) %>% 
+  filter(Wave %in% c(5,7))
+
+
+tmod1.controls <- lm(satisfied_laworder ~ pre_post_2022*(anti_bibi_bi)+ 
+                                        factor(GENDER)+
+                                        poly(age,2)+
+                                        factor(INCOME)+
+                                        factor(educ_level)+
+                                        REGION+
+                       jewish+
+                       RELIGIOSITY_ALL, t1 %>% drop_na(age))
+
+
+tmod2.controls <- tmod1.controls %>% update(satisfied_education~.)
+tmod3.controls <- tmod1.controls %>% update(satisfied_health~.)
+tmod4.controls <- tmod1.controls %>% update(satisfied_transportation~.)
+
+# Define models and corresponding service names
+models_2022 <- list(tmod1.controls, tmod2.controls, tmod3.controls, tmod4.controls)
+
+# Apply function to all models
+t_2022_list <- purrr::map2(models_2022, services, compute_emmeans_2022)
+
+# Apply function to all models
+t_2022_list <- purrr::map2(models_2022, services, compute_emmeans_2022)
+
+
+results_2022 <- lapply(models_2022, function(model) {
+  model %>%
+    broom::tidy() %>%
+    filter(term == "pre_post_2022:anti_bibi_bi") %>%
+    mutate(diff_in_diff = round(estimate, 3),
+           diff_in_diff_p = round(p.value, 3)) %>%
+    dplyr::select(diff_in_diff, diff_in_diff_p)
+})
+
+# Combine results into a single dataframe
+results_df_2022 <- bind_rows(results_2022, .id = "model_id")
+
+# Combine results
+dyad_oct_2022_sep_2023_full <- bind_rows(t_2022_list) %>%
+  mutate(
+    estimate = -estimate,
+    statistic = -statistic,
+    marginal_effect = recode(as.character(anti_bibi_bi),
+                             '0' = "Pro-Netanyahu\n(electoral winner)",
+                             '1' = "Anti-Netanyahu\n(electoral loser)"),
+    marginal_effect_low_ci = (estimate - 1.96 * std.error) %>% round(3),
+    marginal_effect_low_hi = (estimate + 1.96 * std.error) %>% round(3)
+  )%>% 
+  mutate(diff = estimate %>% round(3)) %>% 
+  mutate(diff_ci = str_c(diff," [",marginal_effect_low_ci,", ",marginal_effect_low_hi,"]")) %>% 
+  mutate(dyad = "Oct 2022 - Sep 2023") 
+
+dyad_oct_2022_sep_2023 <- dyad_oct_2022_sep_2023_full %>% 
+  dplyr::select(dyad,
+                service,
+                marginal_effect,
+                diff_ci) %>% 
+  pivot_wider(names_from = marginal_effect,values_from = diff_ci) %>% 
+  bind_cols(results_df_2022) %>% 
+  dplyr::select(-model_id) 
+
+
+```
+
+Table change 2022
+```{r}
+dyad_2022 <- 
+  bind_rows(dyad_apr_2022_march_2023,
+            dyad_apr_2022_sep_2023,
+            dyad_oct_2022_march_2023,
+            dyad_oct_2022_sep_2023) %>% 
+  arrange(service)
+
+dyad_2022 %>% gt::gt()
+```
+
+
+Plot Change 2022
+```{r,fig.width=8}
+dyad_2022_full <- 
+  bind_rows(dyad_apr_2022_march_2023_full,
+            dyad_apr_2022_sep_2023_full,
+            dyad_oct_2022_march_2023_full,
+            dyad_oct_2022_sep_2023_full)
+
+dyad_2022_full %>% 
+  #filter(service=="Law & Order") %>% 
+  ggplot(aes(x=marginal_effect,y=estimate,color=dyad))+
+  geom_point(position = position_dodge(0.2))+
+  geom_pointrange(aes(ymin=marginal_effect_low_ci,ymax = marginal_effect_low_hi),position = position_dodge(0.2))+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  scale_color_discrete(guide = guide_legend(reverse = TRUE))+
+  labs(title="Change 2022",x="Partisanship",y="Marginal effects")+
+  #scale_y_continuous(trans='log10', breaks = breaks,labels = labels) + # Customize the number of breaks
+  coord_flip()+
+  facet_wrap(vars(service))+
+theme_bw()+
+  theme(panel.grid.major.y = element_blank())
+
+```
