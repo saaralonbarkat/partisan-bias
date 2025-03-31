@@ -1357,7 +1357,7 @@ tab_model(tmod1,
 ```
 
 
-## R-square delta
+## Baseline models 
 
 
 ```{r}
@@ -1380,7 +1380,7 @@ tmod4_controls_2021_x <- tmod1_controls_2021_x %>% update(satisfied_transportati
 tmod1_controls_2022_x <- lm(satisfied_laworder ~ pre_post_2022+
                                         factor(GENDER)+
                                         poly(age,2)+
-                                        factor(educ_level)+
+                                        factor(INCOME)+
                                         factor(educ_level)+
                                         REGION +
                        jewish+
@@ -2232,6 +2232,21 @@ t1 <- LibRes_7waves %>%
 
 
 ```{r}
+t1 %>% 
+  labelled::to_factor() %>% 
+  group_by(survey,anti_bibi_bi) %>% 
+  summarise(n = n()) %>% 
+  mutate(percent = ((n /sum (n)) %>% round(3))*100) %>% 
+  mutate(percent_lab = str_c(n," (",percent,"%)")) %>% 
+  #filter(OnlyBibi %in% c("Anti Bibi","Only Bibi")) %>%
+  dplyr::select(survey,anti_bibi_bi,percent_lab) %>% 
+pivot_wider(names_from = anti_bibi_bi,values_from = percent_lab) %>% 
+  data_frame() %>% 
+  gt()
+```
+
+
+```{r}
 
 #LibRes_7waves_jewish %>% count(POL_SAT_Education)
 tmod1 <- lm(satisfied_laworder ~ pre_post_2021*(anti_bibi_bi), data = t1)
@@ -2301,118 +2316,6 @@ tab_model(tmod1,tmod1.controls,
           pred.labels = predictor_labels,
           #order.terms = c(1:3,24,4:23),
           dv.labels = rep(c("Law & Order","Education","Health","Transportation"),each=2))
-```
-
-
-## Weighted regression analysis
-
-```{r}
-t1 <- LibRes_7waves %>% to_factor() %>% 
-  mutate(SOCSTATUS = LibRes_7waves$SOCSTATUS %>% remove_labels(),
-         INCOME = LibRes_7waves$INCOME %>% remove_labels(),
-         age = LibRes_7waves$Age)
-```
-
-
-
-```{r}
-study_data_t1 <- LibRes_7waves %>% remove_labels() %>% as.data.frame() %>% 
-  #dplyr::select(female,
-  #              age_group) %>% 
-  mutate(GENDER_w = GENDER %>%  as_factor(),
-         INCOME_w = INCOME %>% as_factor(),
-         educ_level_w = educ_level %>% as_factor(),
-         REGION_w = REGION %>% as_factor(),
-         jewish_w = jewish %>% as_factor(),
-         RELIGIOSITY_ALL_w = RELIGIOSITY_ALL %>% as_factor()) %>% 
-  mutate(educ_level_w = recode(educ_level_w,
-                            `1` = 1,#no HS
-                            `2` = 1,#no Bagrut
-                            `3` = 2,#bagrut
-                            `4` = 3,#Post HS, non academic
-                            `5` = 4,#academic, partial
-                            `6` = 4,#BA
-                            `7` = 5,#MA
-                            `8` = 6),#PHD
- INCOME_w = recode(INCOME_w,
-                            `1` = 1,#far below average
-                            `2` = 1,#below average
-                            `3` = 2,#average
-                            `4` = 3,#above average
-                            `5` = 3),#far above average
-)
-
-
-```
-
-
-
-```{r}
-#https://medium.com/@coraghenry/survey-skills-in-r-6c99e31a05e7
-# https://zacharylhertz.github.io/posts/2022/05/weighting-surveys
-
-library(weights)
-set.seed(2025)
-
-wpct(study_data_t1$educ_level_w)
-wpct(study_data_t1$INCOME_w)
-```
-
-```{r}
-study_data_t1 %>%  #to_factor() %>%
-  dplyr::select(household_income_gross_cat_2) %>% 
-  #drop_na() %>% 
-  #names()
-  tbl_summary(statistic = list(
-      all_continuous() ~ "{median}, {mean} ({sd})",
-      all_categorical() ~ "{n} ({p}%)"))
-```
-
-
-```{r}
-female_target <- c(.5, .5)
-education_target <- c(0.087, 0.196, 0.094, 0.265, 0.215, 0.127)
-migration_background_target <- c(.74, .26) 
-household_income_gross_cat_target <- c(0.2,0.2,0.2,0.2,0.2)
-
-
-
-```
-
-```{r}
-names(female_target) <- levels(study_data_t1$female)# c("0","1")
-names(age_group_target) <- levels(study_data_t1$age_group) # c("2", "3", "4", "5", "6", "7")
-names(education_target) <- levels(study_data_t1$education)
-names(migration_background_target) <- levels(study_data_t1$migration_background)
-names(household_income_gross_cat_target) <- levels(study_data_t1$household_income_gross_cat)
-
-```
-
-```{r}
-targets <- list(female_target, age_group_target, education_target,migration_background_target,household_income_gross_cat_target)
-names(targets) <- c("female", "age_group","education","migration_background","household_income_gross_cat")
-
-
-targets
-```
-
-
-
-```{r}
-library(anesrake)
-study_data_t1$caseid <- 1:nrow(study_data_t1) 
-```
-
-
-```{r}
-# Perform raking
-raking_result <- anesrake(inputter = targets, 
-                          dataframe = study_data_t1, 
-                          caseid = study_data_t1$caseid) 
-                          #cap = 8, type = "pctlim", pctlim=.025, 
-                          
-# Summary of raking weights
-summary(raking_result)
 ```
 
 
